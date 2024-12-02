@@ -5,6 +5,8 @@
 // Start a KAPLAY game
 kaplay();
 
+debug.inspect = true;
+
 // Load a sprite asset from "sprites/bean.png", with the name "bean"
 loadSprite("bean", "/sprites/bean.png");
 loadSprite("ghosty", "/sprites/ghosty.png");
@@ -37,5 +39,16 @@ for (let i = 0; i < 3; i++) {
     add([
         sprite("ghosty"),
         pos(x, y),
+        anchor(choose([
+            "bot",
+            "botleft",
+            "botright",
+            "center",
+            "left",
+            "right",
+            "top",
+            "topleft",
+            "topright",
+        ])),
     ]);
 }

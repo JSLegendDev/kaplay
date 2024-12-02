@@ -1,7 +1,18 @@
-import { DBG_FONT, LOG_TIME } from "../../constants";
+import type {
+    AnchorComp,
+    AreaComp,
+    PosComp,
+    RotateComp,
+    ScaleComp,
+    SpriteComp,
+} from "../../components";
+import { DBG_FONT, DEF_ANCHOR, LOG_TIME } from "../../constants";
+import { getTreeRoot } from "../../game";
 import { _k } from "../../kaplay";
 import { rgb } from "../../math/color";
-import { vec2, wave } from "../../math/math";
+import { Circle, Rect, Vec2, vec2, wave } from "../../math/math";
+import type { GameObj } from "../../types";
+import { anchorPt } from "../anchor";
 import { formatText } from "../formatText";
 import {
     contentToView,
@@ -19,18 +30,86 @@ import { drawRect } from "./drawRect";
 import { drawTriangle } from "./drawTriangle";
 import { drawUnscaled } from "./drawUnscaled";
 
+let dragging: GameObj<PosComp> | null = null;
+let scaling: GameObj<DComps> | null = null;
+
+type DComps =
+    | SpriteComp
+    | PosComp
+    | AreaComp
+    | AnchorComp
+    | RotateComp
+    | ScaleComp;
+
+export function drawInspectObj(obj: GameObj<DComps>) {
+    if (!obj.width || !obj.height) return;
+    const box = obj.renderArea();
+
+    drawRect({
+        width: box.width,
+        height: box.height,
+        pos: obj.pos,
+        color: rgb(255, 255, 255),
+        opacity: 0.5,
+        fill: false,
+        anchor: obj.anchor ?? "topleft",
+        outline: {
+            color: _k.k.RED,
+            width: 4,
+        },
+    });
+
+    // SCALE Point
+    const anchor = anchorPt(obj.anchor || DEF_ANCHOR).add(-1, -1);
+    const offset = anchor.scale(new Vec2(box.width, box.height).scale(-0.5));
+    const circleShape = new Circle(obj.pos.add(offset), 10);
+
+    drawCircle({
+        radius: 10,
+        pos: obj.pos.add(offset),
+        color: rgb(255, 255, 255),
+        fill: false,
+        outline: {
+            color: _k.k.RED,
+            width: 4,
+        },
+    });
+
+    if (circleShape.contains(mousePos())) {
+        if (_k.k.isMouseDown()) {
+            scaling = obj;
+        }
+    }
+}
+
 export function drawDebug() {
     if (_k.debug.inspect) {
         let inspecting = null;
 
-        for (const obj of _k.game.root.get("*", { recursive: true })) {
-            if (obj.c("area") && obj.isHovering()) {
+        for (const obj of _k.game.root.get<DComps>("*", { recursive: true })) {
+            drawInspectObj(obj);
+
+            if (obj.has("area") && obj.isHovering()) {
                 inspecting = obj;
                 break;
             }
         }
 
+        if (_k.k.isMouseReleased()) {
+            dragging = null;
+            scaling = null;
+        }
+
         _k.game.root.drawInspect();
+
+        if (dragging) {
+            if (dragging.parent && getTreeRoot() !== dragging.parent) {
+                dragging.pos = mousePos().sub(dragging.parent.pos);
+            }
+            else {
+                dragging.pos = mousePos();
+            }
+        }
 
         if (inspecting) {
             const lines = [];
@@ -184,7 +263,8 @@ export function drawDebug() {
 
             _k.game.logs = _k.game.logs
                 .filter((log) =>
-                    _k.app.time() - log.time < (_k.globalOpt.logTime || LOG_TIME)
+                    _k.app.time() - log.time
+                        < (_k.globalOpt.logTime || LOG_TIME)
                 );
 
             const ftext = formatText({
@@ -219,7 +299,11 @@ export function drawDebug() {
     }
 }
 
-function prettyDebug(object: any | undefined, inside: boolean = false, seen: Set<any> = new Set): string {
+function prettyDebug(
+    object: any | undefined,
+    inside: boolean = false,
+    seen: Set<any> = new Set(),
+): string {
     if (seen.has(object)) return "<recursive>";
     var outStr = "", tmp;
     if (inside && typeof object === "string") {
@@ -228,7 +312,8 @@ function prettyDebug(object: any | undefined, inside: boolean = false, seen: Set
     if (Array.isArray(object)) {
         outStr = [
             "[",
-            object.map(e => prettyDebug(e, true, seen.union(new Set([object])))).join(", "),
+            object.map(e => prettyDebug(e, true, seen.union(new Set([object]))))
+                .join(", "),
             "]",
         ].join("");
         object = outStr;
@@ -246,7 +331,11 @@ function prettyDebug(object: any | undefined, inside: boolean = false, seen: Set
             (tmp = Object.getOwnPropertyNames(object)
                     .map(p =>
                         `${/^\w+$/.test(p) ? p : JSON.stringify(p)}: ${
-                            prettyDebug(object[p], true, seen.union(new Set([object])))
+                            prettyDebug(
+                                object[p],
+                                true,
+                                seen.union(new Set([object])),
+                            )
                         }`
                     )
                     .join(", "))
